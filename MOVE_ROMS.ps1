@@ -1,0 +1,275 @@
+# ====================================================================
+# SCRIPT CONFIGURATION
+# ====================================================================
+$SourceDirectory = "D:\ROMs\Genesis"
+$DestinationDirectory = "D:\ROMs\Genesis\_BEST"
+$GameListFile = "D:\ROMs\Genesis\top_genesis_games.txt"
+$SimilarityThreshold = 0.70 # Keeping at 0.70
+
+# --- NEW FEATURE: Start Timer ---
+$StartTime = Get-Date
+
+# --- CRITICAL FIX ATTEMPT: Grant Write Permissions (Optional but Recommended) ---
+# NOTE: Run script as Administrator.
+try {
+    $acl = Get-Acl $DestinationDirectory -ErrorAction Stop
+    $permission = "Everyone","FullControl","Allow"
+    $rule = New-Object System.Security.AccessControl.FileSystemAccessRule $permission
+    $acl.SetAccessRule($rule)
+    $acl | Set-Acl $DestinationDirectory -ErrorAction Stop
+    Write-Host "Confirmed full write permissions on destination directory."
+} catch {
+    Write-Warning "Could not modify permissions on $DestinationDirectory. Run script as Administrator if copies fail."
+}
+
+# ====================================================================
+# CUSTOM FUNCTION: String Similarity (Fuzzy Matching) - UNCHANGED
+# ====================================================================
+function Get-StringSimilarity {
+    param( [string]$String1, [string]$String2 )
+    $s = $String1.ToLower(); $t = $String2.ToLower(); $n = $s.Length; $m = $t.Length
+    if ($n -eq 0 -or $m -eq 0) { return 0 }
+    
+    $d = @()
+    for ($i = 0; $i -le $n; $i++) { 
+        $row = @(); for ($j = 0; $j -le $m; $j++) { $row += 0 }
+        $d += ,$row
+    }
+
+    for ($i = 0; $i -le $n; $i++) { $d[$i][0] = $i }
+    for ($j = 0; $j -le $m; $j++) { $d[0][$j] = $j }
+
+    for ($i = 1; $i -le $n; $i++) {
+        for ($j = 1; $j -le $m; $j++) {
+            $cost = if ($s[$i-1] -eq $t[$j-1]) { 0 } else { 1 }
+            $deletion = $d[$i-1][$j] + 1
+            $insertion = $d[$i][$j-1] + 1
+            $substitution = $d[$i-1][$j-1] + $cost
+            $d[$i][$j] = [math]::Min([math]::Min($deletion, $insertion), $substitution)
+        }
+    }
+    $distance = $d[$n][$m]
+    $maxLength = [math]::Max($n, $m)
+    return 1 - ($distance / $maxLength)
+}
+
+# ====================================================================
+# MAIN SCRIPT EXECUTION BLOCK
+# ====================================================================
+
+function Run-RomScan {
+    param(
+        [Parameter(Mandatory=$true)][string[]]$GameList,
+        [Parameter(Mandatory=$true)][double]$Threshold,
+        [Parameter(Mandatory=$true)][System.IO.FileInfo[]]$AllRoms,
+        [Parameter(Mandatory=$true)][string]$SourceDir,
+        [Parameter(Mandatory=$true)][string]$DestDir
+    )
+
+    $MissedGamesList = @()
+    
+    # Define common English stop words (needs to be redefined inside the function for clean execution)
+    $StopWords = " the ", " of ", " in ", " and ", " a ", " an ", " vs ", " versus "
+    $StopWordsRegex = ($StopWords | ForEach-Object { [regex]::Escape($_) }) -join '|'
+
+    foreach ($GameName in $GameList) {
+        if ([string]::IsNullOrEmpty($GameName)) { continue }
+
+        # --- ENHANCED CLEANING FOR GAME NAME (LIST) ---
+        $CleanGameName = ($GameName | 
+            # Remove parentheses content
+            ForEach-Object { $_ -replace '\s*\(.*\)\s*', '' } |
+            # Remove brackets content
+            ForEach-Object { $_ -replace '\s*\[.*\]\s*', '' } |
+            # Remove years/numbers
+            ForEach-Object { $_ -replace '\s*\d{2,4}\s*', '' } |
+            # Replace symbols with spaces.
+            ForEach-Object { $_ -replace "[\/&:\']-", ' ' } |
+            # Trim leading/trailing whitespace
+            ForEach-Object { $_ -replace '^\s+|\s+$', '' }
+        )
+            
+        # Remove stop words (The, Of, In, etc.)
+        $CleanGameName = $CleanGameName -replace $StopWordsRegex, ' '
+
+        # Final cleanup to ensure single spaces
+        $CleanGameName = $CleanGameName -replace '\s+', ' ' -replace '^\s+|\s+$', ''
+
+        if ([string]::IsNullOrEmpty($CleanGameName)) { continue }
+
+        Write-Host "`nProcessing entry: '$GameName' (Searching for '$CleanGameName' at $($Threshold * 100)%)"
+        
+        $PotentialMatches = @()
+
+        # 3. Search for files and assign priority score
+        foreach ($File in $AllRoms) {
+            $FullName = $File.Name
+            
+            # --- ENHANCED CLEANING FOR FILE NAME (ROM) ---
+            $CleanFileName = ($File.BaseName |
+                # Remove parentheses content
+                ForEach-Object { $_ -replace '\s*\(([^)]+)\)\s*', '' } |
+                # Remove brackets content
+                ForEach-Object { $_ -replace '\s*\[([^]]+)\]\s*', '' } |
+                # Replace symbols with spaces.
+                ForEach-Object { $_ -replace "[\/&:\']-", ' ' } |
+                # Remove stop words
+                ForEach-Object { $_ -replace $StopWordsRegex, ' ' }
+            )
+            $CleanFileName = $CleanFileName -replace '\s+', ' ' -replace '^\s+|\s+$', ''
+            
+            $Similarity = Get-StringSimilarity -String1 $CleanGameName -String2 $CleanFileName
+            $NameMatch = ($Similarity -ge $Threshold)
+
+            if ($NameMatch) {
+                $IsPreferredRegion = ($FullName -like "*(U)*") -or ($FullName -like "*(JUE)*")
+                $IsGoodDump = ($FullName -like "*[!]**")
+                
+                # Priority logic remains the same
+                $Priority = 1 
+                if ($IsPreferredRegion) { $Priority = 2 }
+                if ($IsPreferredRegion -and $IsGoodDump) { $Priority = 3 }
+                
+                $PotentialMatches += [PSCustomObject]@{
+                    File = $File
+                    Similarity = $Similarity
+                    Priority = $Priority
+                }
+            }
+        }
+
+        # 4. Choose the single best file and COPY (using .NET)
+        if ($PotentialMatches.Count -gt 0) {
+            
+            # Sorting logic remains the same
+            $PrioritizedMatches = $PotentialMatches | Sort-Object -Property @{Expression={$_.Priority}; Descending=$true}, @{Expression={$_.Similarity}; Descending=$true}
+            $BestMatchObject = $PrioritizedMatches[0]
+            $BestMatchFile = $BestMatchObject.File
+            $ChosenFileName = $BestMatchFile.Name
+            
+            # Verbose Output
+            $PriorityText = switch ($BestMatchObject.Priority) {
+                3 {"Highest Priority ([!] and (U)/(JUE))"}
+                2 {"High Priority ((U) or (JUE) only)"}
+                1 {"Accepted Region (Fallback)"}
+            }
+            Write-Host "  -> Chosen: $($BestMatchFile.Name) ($PriorityText, Similarity: $($BestMatchObject.Similarity))" -ForegroundColor Green
+
+            # FINAL COPY ATTEMPT WITH .NET METHOD
+            try {
+                $SourceFileObject = Get-ChildItem -Path $SourceDir -Filter $ChosenFileName -ErrorAction Stop
+                
+                if (-not $SourceFileObject) {
+                     Write-Error "  CRITICAL: Final file object lookup failed for $ChosenFileName. Skipping copy." -ErrorAction Stop
+                     continue
+                }
+                
+                $SourcePath = $SourceFileObject.FullName
+                $DestinationPath = Join-Path -Path $DestDir -ChildPath $ChosenFileName
+
+                # Use .NET Copy Method
+                [System.IO.File]::Copy($SourcePath, $DestinationPath, $true)
+                
+                # Final verification after copy
+                if (Test-Path -Path $DestinationPath) {
+                    Write-Host "  Copy SUCCESSFUL. File confirmed at: $DestinationPath" -ForegroundColor Green
+                } else {
+                    Write-Host "  WARNING: Copy succeeded but file was not immediately detectable. Confirm file is in destination." -ForegroundColor Yellow
+                }
+            }
+            catch {
+                Write-Error "  ERROR: Copy failed for $ChosenFileName. Error: $($_.Exception.Message)"
+            }
+        }
+        else {
+            # Record missed games
+            $MissedGamesList += $GameName
+            Write-Host "  No file found matching '$GameName' above $($Threshold * 100)%." -ForegroundColor Gray
+        }
+    }
+
+    return $MissedGamesList
+}
+
+# 1. Setup
+Write-Host "Starting file copy process using System.IO.File::Copy method..."
+Write-Host "Destination Directory: $DestinationDirectory"
+Write-Host "Initial Fuzzy Match Threshold: $($SimilarityThreshold * 100)%"
+Write-Host "--------------------------------------------------------"
+
+if (-not (Test-Path -Path $GameListFile)) { Write-Error "Game list file not found: $GameListFile"; exit 1 }
+$InitialGameList = Get-Content -Path $GameListFile | Select-Object -First 100 | ForEach-Object { $_.Trim() }
+if ($InitialGameList.Count -eq 0) { Write-Host "The game list is empty. Exiting."; exit 1 }
+if (-not (Test-Path -Path $DestinationDirectory)) { New-Item -Path $DestinationDirectory -ItemType Directory | Out-Null }
+
+$AllRoms = Get-ChildItem -Path $SourceDirectory -File -ErrorAction SilentlyContinue
+
+# Execute Initial Scan
+$MissedGames = Run-RomScan -GameList $InitialGameList -Threshold $SimilarityThreshold -AllRoms $AllRoms -SourceDir $SourceDirectory -DestDir $DestinationDirectory
+
+# ====================================================================
+# POST-EXECUTION REPORTING AND RERUN PROMPT
+# ====================================================================
+
+# --- NEW FEATURE: Time Elapsed ---
+$EndTime = Get-Date
+$ElapsedTime = New-TimeSpan -Start $StartTime -End $EndTime
+$TimeFormatted = "{0:00}:{1:00}:{2:00}" -f $ElapsedTime.Hours, $ElapsedTime.Minutes, $ElapsedTime.Seconds
+
+Write-Host "`n--------------------------------------------------------"
+Write-Host "Script finished. Copy operations complete."
+Write-Host "Total time elapsed: $TimeFormatted"
+Write-Host "--------------------------------------------------------"
+
+# Report Missed Games
+if ($MissedGames.Count -gt 0) {
+    Write-Host "`nMissed Games Report: $($MissedGames.Count) games not found (or similarity too low):" -ForegroundColor Red
+    $Counter = 1
+    foreach ($MissedGame in $MissedGames) {
+        Write-Host "  $Counter. $MissedGame" -ForegroundColor Yellow
+        $Counter++
+    }
+    
+    Write-Host "`n--------------------------------------------------------"
+    # --- NEW FEATURE: Rerun Prompt ---
+    $RerunPrompt = "Do you want to re-scan these $($MissedGames.Count) missed games using a lower similarity threshold of 40% (Y/N)?"
+    $Response = Read-Host $RerunPrompt
+
+    if ($Response -eq 'Y' -or $Response -eq 'y') {
+        Write-Host "`nStarting secondary scan for missed games at 40% similarity..." -ForegroundColor Cyan
+        
+        # Reset timer for the secondary scan
+        $StartTimeRerun = Get-Date
+        
+        $MissedGamesAfterRerun = Run-RomScan -GameList $MissedGames -Threshold 0.40 -AllRoms $AllRoms -SourceDir $SourceDirectory -DestDir $DestinationDirectory
+        
+        # Final Report after Rerun
+        $EndTimeRerun = Get-Date
+        $ElapsedTimeRerun = New-TimeSpan -Start $StartTimeRerun -End $EndTimeRerun
+        $TimeFormattedRerun = "{0:00}:{1:00}:{2:00}" -f $ElapsedTimeRerun.Hours, $ElapsedTimeRerun.Minutes, $ElapsedTimeRerun.Seconds
+
+        Write-Host "`n--------------------------------------------------------"
+        Write-Host "Secondary scan complete."
+        Write-Host "Secondary scan time elapsed: $TimeFormattedRerun"
+        
+        if ($MissedGamesAfterRerun.Count -gt 0) {
+            Write-Host "`nMissed Games (Final): $($MissedGamesAfterRerun.Count) games still not found:" -ForegroundColor Red
+            $Counter = 1
+            foreach ($MissedGame in $MissedGamesAfterRerun) {
+                Write-Host "  $Counter. $MissedGame" -ForegroundColor Yellow
+                $Counter++
+            }
+        } else {
+            Write-Host "`nSUCCESS! All remaining games were matched and processed in the secondary scan!" -ForegroundColor Green
+        }
+        
+    } else {
+        Write-Host "Secondary scan skipped." -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "`nSUCCESS! All top games were matched and processed!" -ForegroundColor Green
+}
+
+Write-Host "--------------------------------------------------------"
+Write-Host "Check your destination folder for all copied files."
+# End of Script
