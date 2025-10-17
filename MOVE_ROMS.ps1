@@ -7,7 +7,7 @@ $GameListFile = "D:\ROMs\Genesis\top_genesis_games.txt"
 $SimilarityThreshold = 0.70 # Initial Scan Threshold
 
 # --- NEW FEATURE: Output Logging Setup (FIXED LOCATION & RANDOM ID) ---
-# FIX: Use a robust method to generate a random 2-character ID
+# Use a robust method to generate a random 2-character ID
 $Identifier = @(
     [char]([System.Random]::new().Next(0, 26) + [byte][char]'a'),
     [char]([System.Random]::new().Next(0, 26) + [byte][char]'a')
@@ -15,7 +15,7 @@ $Identifier = @(
 
 $LogFileName = "results_$Identifier.txt"
 
-# FIX: Use $PSScriptRoot to ensure the log folder is created next to the script
+# Use $PSScriptRoot to ensure the log folder is created next to the script
 $LogDirectory = Join-Path -Path $PSScriptRoot -ChildPath "results"
 
 # Check and create the results folder
@@ -92,14 +92,13 @@ function Run-RomScan {
 
     $MissedGamesList = @()
     
-    # Define common English stop words 
-    $StopWords = " the ", " of ", " in ", " and ", " a ", " an ", " vs ", " versus "
+    # Define common English stop words - ADDED 'starring' AND 'of'
+    # Use word boundaries (\b) to ensure 'of' doesn't match 'Professor'
+    $StopWords = " the ", " of ", " in ", " and ", " a ", " an ", " vs ", " versus ", " starring "
     $StopWordsRegex = ($StopWords | ForEach-Object { [regex]::Escape($_) }) -join '|'
     
     # Regex to remove leading articles (A, An, The) for normalization
     $LeadingArticleRegex = '^(the|a|an)\s+'
-    
-    # Hard-coded logic removed for console agnosticism
 
     foreach ($GameName in $GameList) {
         if ([string]::IsNullOrEmpty($GameName)) { continue }
@@ -120,13 +119,16 @@ function Run-RomScan {
             ForEach-Object { $_ -replace '\s*\[.*\]\s*', '' } |
             # Remove years/numbers 
             ForEach-Object { $_ -replace '\s*\d{2,4}\s*', '' } |
-            # Replace symbols with spaces.
-            ForEach-Object { $_ -replace "[\/&:\']-", ' ' } |
+            
+            # --- STRATEGY 1: AGGRESSIVE PUNCTUATION STANDARDIZATION ---
+            # Replace all non-alphanumeric, non-space characters (including ' : - & . ) with a single space.
+            ForEach-Object { $_ -replace '[^a-zA-Z0-9\s]', ' ' } |
+            
             # Trim leading/trailing whitespace
             ForEach-Object { $_ -replace '^\s+|\s+$', '' }
         )
             
-        # Remove stop words (The, Of, In, etc.)
+        # Remove stop words (The, Of, In, Starring, etc.) 
         $CleanGameName = $CleanGameName -replace $StopWordsRegex, ' '
 
         # Final cleanup to ensure single spaces
@@ -145,6 +147,11 @@ function Run-RomScan {
             # --- ROM FILE CLEANING ---
             $WorkingFileName = $File.BaseName
             
+            # --- NEW STRATEGY 3: COMMA-FLIPPING CORRECTION ---
+            # Corrects "Ooze, The (5)" -> "Ooze (5)"
+            $CommaFlipRegex = ', (The|A|An)\s*$'
+            $WorkingFileName = [regex]::Replace($WorkingFileName, $CommaFlipRegex, '', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+
             # 1. Normalize ROM file name by removing leading articles
             $WorkingFileName = [regex]::Replace($WorkingFileName, $LeadingArticleRegex, '', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
             
@@ -157,8 +164,11 @@ function Run-RomScan {
                 ForEach-Object { $_ -replace '\s*\(([^)]+)\)\s*', '' } |
                 # Remove brackets content
                 ForEach-Object { $_ -replace '\s*\[([^]]+)\]\s*', '' } |
-                # Replace symbols with spaces.
-                ForEach-Object { $_ -replace "[\/&:\']-", ' ' } |
+                
+                # --- STRATEGY 1: AGGRESSIVE PUNCTUATION STANDARDIZATION ---
+                # Replace all non-alphanumeric, non-space characters (including ' : - & . ) with a single space.
+                ForEach-Object { $_ -replace '[^a-zA-Z0-9\s]', ' ' } |
+                
                 # Remove stop words
                 ForEach-Object { $_ -replace $StopWordsRegex, ' ' }
             )
