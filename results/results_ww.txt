@@ -1,0 +1,40 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20251016221410
+Username: DESKTOP-Q6QR0I1\elriz
+RunAs User: DESKTOP-Q6QR0I1\elriz
+Configuration Name: 
+Machine: DESKTOP-Q6QR0I1 (Microsoft Windows NT 10.0.19045.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+Process ID: 80596
+PSVersion: 5.1.19041.6456
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.19041.6456
+BuildVersion: 10.0.19041.6456
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+Transcript started, output file is C:\Users\elriz\Documents\_coderepositories\bestOfRoms\results\results_ww.txt
+Transcript started. Output being saved to: C:\Users\elriz\Documents\_coderepositories\bestOfRoms\results\results_ww.txt
+Confirmed full write permissions on destination directory.
+Starting file copy process using System.IO.File::Copy method...
+Destination Directory: D:\ROMs\Genesis\_BEST
+Initial Fuzzy Match Threshold: 70%
+--------------------------------------------------------
+C:\Users\elriz\Documents\_coderepositories\bestOfRoms\MOVE_ROMS.ps1 : Game list file not found: 
+D:\ROMs\Genesis\top_genesis_games.txt
+At line:1 char:1
++ .\MOVE_ROMS.ps1
++ ~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:) [Write-Error], WriteErrorException
+    + FullyQualifiedErrorId : Microsoft.PowerShell.Commands.WriteErrorException,MOVE_ROMS.ps1
+C:\Users\elriz\Documents\_coderepositories\bestOfRoms\MOVE_ROMS.ps1 : Game list file not found:
+D:\ROMs\Genesis\top_genesis_games.txt
+At line:1 char:1
++ .\MOVE_ROMS.ps1
++ ~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:) [Write-Error], WriteErrorException
+    + FullyQualifiedErrorId : Microsoft.PowerShell.Commands.WriteErrorException,MOVE_ROMS.ps1
+

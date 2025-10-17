@@ -7,12 +7,10 @@ $GameListFile = "D:\ROMs\Genesis\top_genesis_games.txt"
 $SimilarityThreshold = 0.70 # Initial Scan Threshold
 
 # --- NEW FEATURE: Output Logging Setup (FIXED LOCATION & RANDOM ID) ---
-# Use a robust method to generate a random 2-character ID
 $Identifier = @(
     [char]([System.Random]::new().Next(0, 26) + [byte][char]'a'),
     [char]([System.Random]::new().Next(0, 26) + [byte][char]'a')
 ) -join ""
-
 $LogFileName = "results_$Identifier.txt"
 
 # Use $PSScriptRoot to ensure the log folder is created next to the script
@@ -33,7 +31,6 @@ Write-Host "Transcript started. Output being saved to: $LogFilePath"
 $StartTime = Get-Date
 
 # --- CRITICAL FIX ATTEMPT: Grant Write Permissions (Optional but Recommended) ---
-# NOTE: Run script as Administrator.
 try {
     $acl = Get-Acl $DestinationDirectory -ErrorAction Stop
     $permission = "Everyone","FullControl","Allow"
@@ -72,7 +69,6 @@ function Get-StringSimilarity {
         }
     }
     $distance = $d[$n][$m]
-    # The Levenshtein distance is normalized by the length of the longest string (Max)
     $maxLength = [math]::Max($n, $m)
     return 1 - ($distance / $maxLength)
 }
@@ -92,9 +88,8 @@ function Run-RomScan {
 
     $MissedGamesList = @()
     
-    # Define common English stop words - ADDED 'starring' AND 'of'
-    # Use word boundaries (\b) to ensure 'of' doesn't match 'Professor'
-    $StopWords = " the ", " of ", " in ", " and ", " a ", " an ", " vs ", " versus ", " starring "
+    # Define common English stop words - Agnostic only
+    $StopWords = " the ", " of ", " in ", " and ", " a ", " an ", " vs ", " versus ", " starring ", " video game "
     $StopWordsRegex = ($StopWords | ForEach-Object { [regex]::Escape($_) }) -join '|'
     
     # Regex to remove leading articles (A, An, The) for normalization
@@ -120,19 +115,19 @@ function Run-RomScan {
             # Remove years/numbers 
             ForEach-Object { $_ -replace '\s*\d{2,4}\s*', '' } |
             
-            # --- STRATEGY 1: AGGRESSIVE PUNCTUATION STANDARDIZATION ---
-            # Replace all non-alphanumeric, non-space characters (including ' : - & . ) with a single space.
+            # AGGRESSIVE PUNCTUATION STANDARDIZATION
             ForEach-Object { $_ -replace '[^a-zA-Z0-9\s]', ' ' } |
             
             # Trim leading/trailing whitespace
             ForEach-Object { $_ -replace '^\s+|\s+$', '' }
         )
             
-        # Remove stop words (The, Of, In, Starring, etc.) 
+        # Remove stop words and keywords
         $CleanGameName = $CleanGameName -replace $StopWordsRegex, ' '
-
-        # Final cleanup to ensure single spaces
         $CleanGameName = $CleanGameName -replace '\s+', ' ' -replace '^\s+|\s+$', ''
+        
+        # Prepare tokens for Strategy 1 (Token Containment)
+        $GameNameTokens = $CleanGameName.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)
 
         if ([string]::IsNullOrEmpty($CleanGameName)) { continue }
 
@@ -147,34 +142,63 @@ function Run-RomScan {
             # --- ROM FILE CLEANING ---
             $WorkingFileName = $File.BaseName
             
-            # --- NEW STRATEGY 3: COMMA-FLIPPING CORRECTION ---
-            # Corrects "Ooze, The (5)" -> "Ooze (5)"
+            # COMMA-FLIPPING CORRECTION (Ooze, The)
             $CommaFlipRegex = ', (The|A|An)\s*$'
             $WorkingFileName = [regex]::Replace($WorkingFileName, $CommaFlipRegex, '', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
 
-            # 1. Normalize ROM file name by removing leading articles
+            # Normalize ROM file name by removing leading articles
             $WorkingFileName = [regex]::Replace($WorkingFileName, $LeadingArticleRegex, '', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
             
-            # 2. Numeric Normalization (Roman to Arabic)
+            # Numeric Normalization (Roman to Arabic)
             $WorkingFileName = $WorkingFileName -replace ' IV ', ' 4 ' -replace ' III ', ' 3 ' -replace ' II ', ' 2 ' -replace ' I ', ' 1 '
             
             # --- ENHANCED CLEANING FOR FILE NAME (ROM) ---
             $CleanFileName = ($WorkingFileName |
-                # Remove parentheses content
-                ForEach-Object { $_ -replace '\s*\(([^)]+)\)\s*', '' } |
                 # Remove brackets content
                 ForEach-Object { $_ -replace '\s*\[([^]]+)\]\s*', '' } |
+                # Remove parentheses content (often has region/version info)
+                ForEach-Object { $_ -replace '\s*\(([^)]+)\)\s*', '' } |
                 
-                # --- STRATEGY 1: AGGRESSIVE PUNCTUATION STANDARDIZATION ---
-                # Replace all non-alphanumeric, non-space characters (including ' : - & . ) with a single space.
+                # AGGRESSIVE PUNCTUATION STANDARDIZATION
                 ForEach-Object { $_ -replace '[^a-zA-Z0-9\s]', ' ' } |
                 
-                # Remove stop words
+                # Remove stop words and keywords
                 ForEach-Object { $_ -replace $StopWordsRegex, ' ' }
             )
             $CleanFileName = $CleanFileName -replace '\s+', ' ' -replace '^\s+|\s+$', ''
             
+            # Get ROM Name Tokens
+            $FileNameTokens = $CleanFileName.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)
+
+
+            # --- PRIMARY MATCHING: LEVENSHTEIN (Standard Similarity) ---
             $Similarity = Get-StringSimilarity -String1 $CleanGameName -String2 $CleanFileName
+
+
+            # --- STRATEGY 1: TOKEN CONTAINMENT BOOST (The Aladdin/Ecco Fix) ---
+            $TokenMatch = $false
+            if ($FileNameTokens.Length -gt 0) {
+                # Check if EVERY word in the ROM name is present in the List Name's words
+                $AllTokensContained = $FileNameTokens | ForEach-Object { 
+                    $token = $_ 
+                    $GameNameTokens -contains $token 
+                }
+                
+                # COUNT FIX FOR PS 5.1 COMPATIBILITY: Use Where-Object piped to .Count
+                $MatchCount = ($AllTokensContained | Where-Object { $_ }).Count
+
+                # If the number of matching tokens equals the total number of ROM tokens, it's a perfect subset match
+                if ($MatchCount -eq $FileNameTokens.Length) {
+                    $TokenMatch = $true
+                    # Boost the similarity score significantly if it is a subset match
+                    if ($Similarity -lt 0.95) {
+                        $Similarity = 0.95 
+                        Write-Host "  -> TOKEN MATCH BOOST APPLIED: Score set to 0.95 due to perfect token subset." -ForegroundColor Cyan
+                    }
+                }
+            }
+
+
             $NameMatch = ($Similarity -ge $Threshold)
 
             if ($NameMatch) {
@@ -288,7 +312,7 @@ if ($MissedGames.Count -gt 0) {
     
     Write-Host "`n--------------------------------------------------------"
     # --- Rerun Prompt ---
-    $SecondaryThreshold = 0.55 # New, higher threshold for secondary scan
+    $SecondaryThreshold = 0.50 # Secondary threshold set to 50%
     $RerunPrompt = "Do you want to re-scan these $($MissedGames.Count) missed games using a lower similarity threshold of $($SecondaryThreshold * 100)% (Y/N)?"
     $Response = Read-Host $RerunPrompt
 
