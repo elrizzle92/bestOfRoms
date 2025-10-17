@@ -4,9 +4,32 @@
 $SourceDirectory = "D:\ROMs\Genesis"
 $DestinationDirectory = "D:\ROMs\Genesis\_BEST"
 $GameListFile = "D:\ROMs\Genesis\top_genesis_games.txt"
-$SimilarityThreshold = 0.70 # Keeping at 0.70
+$SimilarityThreshold = 0.70 # Initial Scan Threshold
 
-# --- NEW FEATURE: Start Timer ---
+# --- NEW FEATURE: Output Logging Setup (FIXED LOCATION & RANDOM ID) ---
+# FIX: Use a robust method to generate a random 2-character ID
+$Identifier = @(
+    [char]([System.Random]::new().Next(0, 26) + [byte][char]'a'),
+    [char]([System.Random]::new().Next(0, 26) + [byte][char]'a')
+) -join ""
+
+$LogFileName = "results_$Identifier.txt"
+
+# FIX: Use $PSScriptRoot to ensure the log folder is created next to the script
+$LogDirectory = Join-Path -Path $PSScriptRoot -ChildPath "results"
+
+# Check and create the results folder
+if (-not (Test-Path -Path $LogDirectory)) {
+    Write-Host "Creating results folder: $LogDirectory"
+    New-Item -Path $LogDirectory -ItemType Directory | Out-Null
+}
+
+$LogFilePath = Join-Path -Path $LogDirectory -ChildPath $LogFileName
+Start-Transcript -Path $LogFilePath -Append
+Write-Host "Transcript started. Output being saved to: $LogFilePath"
+# ----------------------------------------
+
+# --- Timer Setup ---
 $StartTime = Get-Date
 
 # --- CRITICAL FIX ATTEMPT: Grant Write Permissions (Optional but Recommended) ---
@@ -49,6 +72,7 @@ function Get-StringSimilarity {
         }
     }
     $distance = $d[$n][$m]
+    # The Levenshtein distance is normalized by the length of the longest string (Max)
     $maxLength = [math]::Max($n, $m)
     return 1 - ($distance / $maxLength)
 }
@@ -68,20 +92,33 @@ function Run-RomScan {
 
     $MissedGamesList = @()
     
-    # Define common English stop words (needs to be redefined inside the function for clean execution)
+    # Define common English stop words 
     $StopWords = " the ", " of ", " in ", " and ", " a ", " an ", " vs ", " versus "
     $StopWordsRegex = ($StopWords | ForEach-Object { [regex]::Escape($_) }) -join '|'
+    
+    # Regex to remove leading articles (A, An, The) for normalization
+    $LeadingArticleRegex = '^(the|a|an)\s+'
+    
+    # Hard-coded logic removed for console agnosticism
 
     foreach ($GameName in $GameList) {
         if ([string]::IsNullOrEmpty($GameName)) { continue }
+        
+        $WorkingGameName = $GameName
+        
+        # 1. Normalize title by removing leading articles
+        $WorkingGameName = [regex]::Replace($WorkingGameName, $LeadingArticleRegex, '', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+
+        # 2. Numeric Normalization (Roman to Arabic)
+        $WorkingGameName = $WorkingGameName -replace ' IV ', ' 4 ' -replace ' III ', ' 3 ' -replace ' II ', ' 2 ' -replace ' I ', ' 1 '
 
         # --- ENHANCED CLEANING FOR GAME NAME (LIST) ---
-        $CleanGameName = ($GameName | 
+        $CleanGameName = ($WorkingGameName | 
             # Remove parentheses content
             ForEach-Object { $_ -replace '\s*\(.*\)\s*', '' } |
             # Remove brackets content
             ForEach-Object { $_ -replace '\s*\[.*\]\s*', '' } |
-            # Remove years/numbers
+            # Remove years/numbers 
             ForEach-Object { $_ -replace '\s*\d{2,4}\s*', '' } |
             # Replace symbols with spaces.
             ForEach-Object { $_ -replace "[\/&:\']-", ' ' } |
@@ -105,8 +142,17 @@ function Run-RomScan {
         foreach ($File in $AllRoms) {
             $FullName = $File.Name
             
+            # --- ROM FILE CLEANING ---
+            $WorkingFileName = $File.BaseName
+            
+            # 1. Normalize ROM file name by removing leading articles
+            $WorkingFileName = [regex]::Replace($WorkingFileName, $LeadingArticleRegex, '', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+            
+            # 2. Numeric Normalization (Roman to Arabic)
+            $WorkingFileName = $WorkingFileName -replace ' IV ', ' 4 ' -replace ' III ', ' 3 ' -replace ' II ', ' 2 ' -replace ' I ', ' 1 '
+            
             # --- ENHANCED CLEANING FOR FILE NAME (ROM) ---
-            $CleanFileName = ($File.BaseName |
+            $CleanFileName = ($WorkingFileName |
                 # Remove parentheses content
                 ForEach-Object { $_ -replace '\s*\(([^)]+)\)\s*', '' } |
                 # Remove brackets content
@@ -189,7 +235,7 @@ function Run-RomScan {
     }
 
     return $MissedGamesList
-}
+} 
 
 # 1. Setup
 Write-Host "Starting file copy process using System.IO.File::Copy method..."
@@ -211,7 +257,7 @@ $MissedGames = Run-RomScan -GameList $InitialGameList -Threshold $SimilarityThre
 # POST-EXECUTION REPORTING AND RERUN PROMPT
 # ====================================================================
 
-# --- NEW FEATURE: Time Elapsed ---
+# --- Time Elapsed ---
 $EndTime = Get-Date
 $ElapsedTime = New-TimeSpan -Start $StartTime -End $EndTime
 $TimeFormatted = "{0:00}:{1:00}:{2:00}" -f $ElapsedTime.Hours, $ElapsedTime.Minutes, $ElapsedTime.Seconds
@@ -231,17 +277,18 @@ if ($MissedGames.Count -gt 0) {
     }
     
     Write-Host "`n--------------------------------------------------------"
-    # --- NEW FEATURE: Rerun Prompt ---
-    $RerunPrompt = "Do you want to re-scan these $($MissedGames.Count) missed games using a lower similarity threshold of 40% (Y/N)?"
+    # --- Rerun Prompt ---
+    $SecondaryThreshold = 0.55 # New, higher threshold for secondary scan
+    $RerunPrompt = "Do you want to re-scan these $($MissedGames.Count) missed games using a lower similarity threshold of $($SecondaryThreshold * 100)% (Y/N)?"
     $Response = Read-Host $RerunPrompt
 
     if ($Response -eq 'Y' -or $Response -eq 'y') {
-        Write-Host "`nStarting secondary scan for missed games at 40% similarity..." -ForegroundColor Cyan
+        Write-Host "`nStarting secondary scan for missed games at $($SecondaryThreshold * 100)% similarity..." -ForegroundColor Cyan
         
         # Reset timer for the secondary scan
         $StartTimeRerun = Get-Date
         
-        $MissedGamesAfterRerun = Run-RomScan -GameList $MissedGames -Threshold 0.40 -AllRoms $AllRoms -SourceDir $SourceDirectory -DestDir $DestinationDirectory
+        $MissedGamesAfterRerun = Run-RomScan -GameList $MissedGames -Threshold $SecondaryThreshold -AllRoms $AllRoms -SourceDir $SourceDirectory -DestDir $DestinationDirectory
         
         # Final Report after Rerun
         $EndTimeRerun = Get-Date
@@ -272,4 +319,6 @@ if ($MissedGames.Count -gt 0) {
 
 Write-Host "--------------------------------------------------------"
 Write-Host "Check your destination folder for all copied files."
+# --- NEW FEATURE: Stop Logging ---
+Stop-Transcript
 # End of Script
