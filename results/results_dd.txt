@@ -1,0 +1,52 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20251016232545
+Username: DESKTOP-Q6QR0I1\elriz
+RunAs User: DESKTOP-Q6QR0I1\elriz
+Configuration Name: 
+Machine: DESKTOP-Q6QR0I1 (Microsoft Windows NT 10.0.19045.0)
+Host Application: C:\WINDOWS\system32\WindowsPowerShell\v1.0\PowerShell_ISE.exe
+Process ID: 35248
+PSVersion: 5.1.19041.6456
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.19041.6456
+BuildVersion: 10.0.19041.6456
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+Transcript started, output file is C:\Users\elriz\Documents\_coderepositories\bestOfRoms\results\results_dd.txt
+Transcript started. Output being saved to: C:\Users\elriz\Documents\_coderepositories\bestOfRoms\results\results_dd.txt
+Confirmed full write permissions on destination directory.
+Starting file copy process using System.IO.File::Copy method...
+Destination Directory: D:\ROMs\Genesis\_BEST
+Initial Fuzzy Match Threshold: 70%
+--------------------------------------------------------
+PS C:\Users\elriz\Documents\_coderepositories\bestOfRoms> TerminatingError(Run-RomScan): "Cannot bind argument to parameter 'GameList' because it is an empty string."
+Run-RomScan : Cannot bind argument to parameter 'GameList' because it is an empty string.
+At C:\Users\elriz\Documents\_coderepositories\bestOfRoms\MOVE_ROMS.ps1:319 char:38
++ $MissedGames = Run-RomScan -GameList $InitialGameList -Threshold $Sim ...
++                                      ~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidData: (:) [Run-RomScan], ParameterBindingValidationException
+    + FullyQualifiedErrorId : ParameterArgumentValidationErrorEmptyStringNotAllowed,Run-RomScan
+Run-RomScan : Cannot bind argument to parameter 'GameList' because it is an empty string.
+At C:\Users\elriz\Documents\_coderepositories\bestOfRoms\MOVE_ROMS.ps1:319 char:38
++ $MissedGames = Run-RomScan -GameList $InitialGameList -Threshold $Sim ...
++                                      ~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidData: (:) [Run-RomScan], ParameterBindingValidationException
+    + FullyQualifiedErrorId : ParameterArgumentValidationErrorEmptyStringNotAllowed,Run-RomScan
+
+
+--------------------------------------------------------
+Script finished. Copy operations complete.
+Total time elapsed: 00:00:00
+--------------------------------------------------------
+
+SUCCESS! All top games were matched and processed!
+--------------------------------------------------------
+Check your destination folder for all copied files.
+**********************
+Windows PowerShell transcript end
+End time: 20251016232545
+**********************

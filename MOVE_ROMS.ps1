@@ -43,7 +43,7 @@ try {
 }
 
 # ====================================================================
-# CUSTOM FUNCTION: String Similarity (Fuzzy Matching) - UNCHANGED
+# CUSTOM FUNCTION: String Similarity (Fuzzy Matching)
 # ====================================================================
 function Get-StringSimilarity {
     param( [string]$String1, [string]$String2 )
@@ -88,12 +88,15 @@ function Run-RomScan {
 
     $MissedGamesList = @()
     
-    # Define common English stop words - Agnostic only
-    $StopWords = " the ", " of ", " in ", " and ", " a ", " an ", " vs ", " versus ", " starring ", " video game "
+    # Define common English stop words - EXPANDED for better trimming of long titles (e.g., Turbo, Tournament, Secret)
+    $StopWords = " the ", " of ", " in ", " and ", " a ", " an ", " vs ", " versus ", " starring ", " video game ", " turbo ", " tournament ", " secret ", " adventure ", " fantasy ", " world ", " story "
     $StopWordsRegex = ($StopWords | ForEach-Object { [regex]::Escape($_) }) -join '|'
     
     # Regex to remove leading articles (A, An, The) for normalization
     $LeadingArticleRegex = '^(the|a|an)\s+'
+
+    # Regex to extract all numbers (1, 2, 3, 4) from a string
+    $NumberRegex = '\d+'
 
     foreach ($GameName in $GameList) {
         if ([string]::IsNullOrEmpty($GameName)) { continue }
@@ -125,6 +128,9 @@ function Run-RomScan {
         # Remove stop words and keywords
         $CleanGameName = $CleanGameName -replace $StopWordsRegex, ' '
         $CleanGameName = $CleanGameName -replace '\s+', ' ' -replace '^\s+|\s+$', ''
+        
+        # Capture the numbers in the list name (e.g., '2' from 'Sonic 2')
+        $GameNameNumbers = [regex]::Matches($CleanGameName, $NumberRegex) | ForEach-Object {$_.Value}
         
         # Prepare tokens for Strategy 1 (Token Containment)
         $GameNameTokens = $CleanGameName.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)
@@ -167,6 +173,9 @@ function Run-RomScan {
             )
             $CleanFileName = $CleanFileName -replace '\s+', ' ' -replace '^\s+|\s+$', ''
             
+            # Capture the numbers in the ROM file name
+            $FileNameNumbers = [regex]::Matches($CleanFileName, $NumberRegex) | ForEach-Object {$_.Value}
+            
             # Get ROM Name Tokens
             $FileNameTokens = $CleanFileName.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)
 
@@ -174,9 +183,19 @@ function Run-RomScan {
             # --- PRIMARY MATCHING: LEVENSHTEIN (Standard Similarity) ---
             $Similarity = Get-StringSimilarity -String1 $CleanGameName -String2 $CleanFileName
 
+            # --- SEQUENCE/NUMBER CONFLICT CHECK (The biggest FP Fix: Sonic 3 vs Sonic) ---
+            $NumberConflict = $false
+            if ($GameNameNumbers.Count -gt 0) {
+                # Check if the list name has numbers, but the ROM name does NOT contain the HIGHEST number from the list name
+                # This prevents matching "Sonic" to "Sonic 3"
+                $HighestGameNumber = $GameNameNumbers | Measure-Object -Maximum | Select-Object -ExpandProperty Maximum
+                if (-not ($FileNameNumbers -contains $HighestGameNumber)) {
+                    $NumberConflict = $true
+                }
+            }
+
 
             # --- STRATEGY 1: TOKEN CONTAINMENT BOOST (The Aladdin/Ecco Fix) ---
-            $TokenMatch = $false
             if ($FileNameTokens.Length -gt 0) {
                 # Check if EVERY word in the ROM name is present in the List Name's words
                 $AllTokensContained = $FileNameTokens | ForEach-Object { 
@@ -189,13 +208,25 @@ function Run-RomScan {
 
                 # If the number of matching tokens equals the total number of ROM tokens, it's a perfect subset match
                 if ($MatchCount -eq $FileNameTokens.Length) {
-                    $TokenMatch = $true
-                    # Boost the similarity score significantly if it is a subset match
-                    if ($Similarity -lt 0.95) {
+                    
+                    if ($NumberConflict) {
+                        # PENALTY: The subset match is invalid because the list name requires a number the ROM lacks
+                        $Similarity = [math]::Min($Similarity, 0.50) # Drop the score to prevent matching above initial threshold
+                        Write-Host "  -> TOKEN PENALTY APPLIED: Token subset is valid, but missing required sequence number. Similarity dropped to 0.50." -ForegroundColor Red
+                    }
+                    elseif ($Similarity -lt 0.95) {
+                        # BOOST: Safe to boost, as there's no number conflict
                         $Similarity = 0.95 
                         Write-Host "  -> TOKEN MATCH BOOST APPLIED: Score set to 0.95 due to perfect token subset." -ForegroundColor Cyan
                     }
                 }
+            }
+
+
+            # Apply the number conflict penalty to the final score even if no token boost was involved
+            if ($NumberConflict -and $Similarity -gt 0.65) {
+                 $Similarity = [math]::Min($Similarity, 0.65) # Cap at 0.65 to fail 0.70 threshold
+                 Write-Host "  -> NUMBER PENALTY APPLIED: List name requires a number the ROM lacks. Similarity capped at 0.65." -ForegroundColor Red
             }
 
 

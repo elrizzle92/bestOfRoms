@@ -5179,3 +5179,43 @@ SUCCESS! All remaining games were matched and processed in the secondary scan!
 Check your destination folder for all copied files.
 Transcript stopped, output file is C:\Users\elriz\Documents\_coderepositories\bestOfRoms\results\results_aa.txt
 PS C:\Users\elriz\Documents\_coderepositories\bestOfRoms> .\gamelister.ps1
+PS C:\Users\elriz\Documents\_coderepositories\bestOfRoms> git status
+On branch feat-adv
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   MOVE_ROMS.ps1
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	gameslist-genesis.txt
+	results/
+
+no changes added to commit (use "git add" and/or "git commit -a")
+PS C:\Users\elriz\Documents\_coderepositories\bestOfRoms> git add .
+git : warning: in the working copy of 'results/results_aa.txt', LF will be replaced by CRLF the next time Git touches it
+At line:1 char:1
++ git add .
++ ~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (warning: in the... Git touches it:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+git : warning: in the working copy of 'results/results_aa.txt', LF will be replaced by CRLF the next time Git
+touches it
+At line:1 char:1
++ git add .
++ ~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (warning: in the... Git touches it:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+
+warning: in the working copy of 'results/results_bb.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'results/results_bb.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'results/results_jj.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'results/results_jj.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'results/results_ll.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'results/results_ll.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'results/results_mm.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'results/results_mm.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'results/results_oo.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'results/results_oo.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'results/results_zz.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'results/results_zz.txt', LF will be replaced by CRLF the next time Git touches it

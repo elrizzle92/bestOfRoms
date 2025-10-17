@@ -5,4 +5,4 @@ $folderPath = "D:\ROMs\Genesis"
 $outputPath = "D:\ROMs\Genesis\gameslist-genesis.txt"
 
 # Get all files in the specified folder and output their names to the text file
-Get-ChildItem -Path $folderPath -File | Select-Object -ExpandProperty Name | Out-File -FilePath $outputPath
+Magi
